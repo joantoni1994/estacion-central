@@ -1,0 +1,56 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Bodega {
+  id        String     @id
+  nombre    String
+  productos Producto[]
+  acuerdos  Acuerdo[]
+}
+
+model Producto {
+  id           String        @id
+  sku          String        @unique
+  nombre       String
+  bodegaId     String
+  costeBase    Float
+  bodega       Bodega        @relation(fields: [bodegaId], references: [id], onDelete: Restrict)
+  reclamaciones Reclamacion[]
+}
+
+model Acuerdo {
+  id         Int       @id @default(autoincrement())
+  bodegaId   String
+  tipo       String    // 'PORCENTAJE' | 'SIN_CARGO'
+  valor      Float
+  fechaInicio DateTime?
+  fechaFin   DateTime?
+  activo     Boolean   @default(true)
+  bodega     Bodega    @relation(fields: [bodegaId], references: [id], onDelete: Restrict)
+}
+
+model Reclamacion {
+  id               Int       @id @default(autoincrement())
+  productoId       String
+  cantidadAfectada Int
+  importeCalculado Float
+  estado           String    @default("PENDIENTE") // PENDIENTE | RECLAMADA | PAGADA
+  fechaVenta       DateTime
+  fechaReclamacion DateTime?
+  fechaPago        DateTime?
+  comentarios      String?
+  justificanteUrl  String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  producto         Producto  @relation(fields: [productoId], references: [id], onDelete: Restrict)
+}
