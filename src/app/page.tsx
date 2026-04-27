@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { Trash2, Edit, Save, X, CheckCircle, CalendarDays, Search, Star, Download, CloudUpload } from 'lucide-react';
+import { Trash2, Edit, Save, X, CheckCircle, CalendarDays, Search, Star, Download, CloudUpload, ChevronRight, ChevronDown } from 'lucide-react';
 import { collection, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase'; 
 
@@ -11,22 +11,20 @@ export default function Dashboard() {
   const [editId, setEditId] = useState<number | null>(null);
   const [tempEdit, setTempEdit] = useState<any>({});
   const [nuevoPeriodo, setNuevoPeriodo] = useState<Record<number, string>>({});
-  
-  // Estado para saber si hay datos pendientes de subir
   const [hayDatosLocales, setHayDatosLocales] = useState(false);
+  
+  // NUEVO: Memoria para saber qué bodegas están desplegadas
+  const [bodegasDesplegadas, setBodegasDesplegadas] = useState<string[]>([]);
 
   useEffect(() => {
-    // 1. Cargamos lo local para que no desaparezca de tu pantalla
     const locales = JSON.parse(localStorage.getItem('acuerdosMock') || '[]');
     if (locales.length > 0) {
       setHayDatosLocales(true);
       setAcuerdos(locales);
     }
 
-    // 2. Escuchamos a Firebase
     const unsubscribe = onSnapshot(collection(db, 'acuerdos'), (snapshot) => {
       const datosNube = snapshot.docs.map(doc => doc.data());
-      // Si Firebase ya tiene datos, los usamos y quitamos el aviso
       if (datosNube.length > 0) {
         setAcuerdos(datosNube);
         setHayDatosLocales(false);
@@ -36,20 +34,18 @@ export default function Dashboard() {
     return () => unsubscribe();
   }, []);
 
-  // --- BOTÓN MÁGICO DE MIGRACIÓN ---
   const migrarNube = async () => {
     try {
       const locales = JSON.parse(localStorage.getItem('acuerdosMock') || '[]');
       for (const ac of locales) {
-        // Guarda cada acuerdo en la nube
         await setDoc(doc(db, 'acuerdos', ac.id.toString()), ac);
       }
       alert('¡Datos subidos a Firebase con éxito! ☁️');
-      localStorage.removeItem('acuerdosMock'); // Limpiamos el rastro local
+      localStorage.removeItem('acuerdosMock');
       setHayDatosLocales(false);
     } catch (error) {
       console.error("Error de Firebase:", error);
-      alert('Error al subir a la nube. (Asegúrate de que pusiste Firestore en "Modo Prueba")');
+      alert('Error al subir a la nube.');
     }
   };
 
@@ -62,7 +58,7 @@ export default function Dashboard() {
   };
 
   const exportarBackup = () => {
-    const datos = JSON.stringify(acuerdos); // Ahora exporta lo que haya en pantalla
+    const datos = JSON.stringify(acuerdos);
     if (datos === '[]') return alert('No hay datos para exportar.');
     const blob = new Blob([datos], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -130,6 +126,15 @@ export default function Dashboard() {
     if (acuerdo) actualizarEnNube({ ...acuerdo, reclamaciones: acuerdo.reclamaciones.filter((rec: any) => rec.id !== rId) });
   };
 
+  // NUEVO: Función para abrir o cerrar el desplegable de una bodega
+  const toggleBodega = (nombreBodega: string) => {
+    if (bodegasDesplegadas.includes(nombreBodega)) {
+      setBodegasDesplegadas(bodegasDesplegadas.filter(b => b !== nombreBodega));
+    } else {
+      setBodegasDesplegadas([...bodegasDesplegadas, nombreBodega]);
+    }
+  };
+
   const acuerdosFiltrados = acuerdos.filter(a => a.bodega.toLowerCase().includes(filtroBodega.toLowerCase()));
   const agrupadas = acuerdosFiltrados.reduce((acc: Record<string, any[]>, obj: any) => {
     const key = obj.bodega.trim().toUpperCase();
@@ -141,7 +146,6 @@ export default function Dashboard() {
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto">
       
-      {/* AVISO DE MIGRACIÓN GIGANTE */}
       {hayDatosLocales && (
         <div className="bg-blue-50 border-2 border-blue-400 p-5 rounded-lg mb-6 flex flex-col md:flex-row justify-between items-center shadow-md">
           <div className="mb-4 md:mb-0">
@@ -192,95 +196,116 @@ export default function Dashboard() {
 
         if (!tieneContenido) return null;
 
+        // LÓGICA DE DESPLEGABLE: Está abierta si el usuario hizo clic, o si está usando el buscador
+        const estaDesplegada = bodegasDesplegadas.includes(bodega) || filtroBodega.trim() !== '';
+
         return (
-          <div key={bodega} className="mb-4 border border-slate-300 rounded bg-white shadow-sm">
-            <div className="bg-slate-800 text-white px-3 py-1.5 font-bold text-sm tracking-wide flex justify-between items-center">
-              <span className="uppercase">{bodega}</span>
-              <a href={`/nueva-reclamacion?bodega=${encodeURIComponent(bodega)}`} className="text-xs bg-slate-700 hover:bg-slate-600 px-2 py-0.5 rounded cursor-pointer text-white">+ Acuerdo aquí</a>
+          <div key={bodega} className="mb-4 border border-slate-300 rounded bg-white shadow-sm overflow-hidden">
+            
+            {/* CABECERA DE LA BODEGA (Ahora es un botón gigante) */}
+            <div 
+              onClick={() => toggleBodega(bodega)}
+              className="bg-slate-800 text-white px-3 py-2 font-bold text-sm tracking-wide flex justify-between items-center cursor-pointer hover:bg-slate-700 transition-colors"
+            >
+              <div className="flex items-center gap-2 select-none">
+                {estaDesplegada ? <ChevronDown size={18} className="text-slate-400" /> : <ChevronRight size={18} className="text-slate-400" />}
+                <span className="uppercase">{bodega}</span>
+                {!estaDesplegada && <span className="ml-2 text-xs font-normal text-slate-400 bg-slate-900 px-2 py-0.5 rounded-full">{lista.length} acuerdos</span>}
+              </div>
+              <a 
+                href={`/nueva-reclamacion?bodega=${encodeURIComponent(bodega)}`} 
+                onClick={(e) => e.stopPropagation()} // Esto evita que se cierre la bodega al darle al botón
+                className="text-xs bg-blue-600 hover:bg-blue-500 px-2 py-1 rounded cursor-pointer text-white shadow-sm"
+              >
+                + Acuerdo
+              </a>
             </div>
             
-            <div className="divide-y divide-gray-200">
-              {lista.map((a: any) => {
-                const items: any[] = (a.reclamaciones || []).filter((r: any) => {
-                  if (pestaña === 'activa') return r.situacion !== 'Pagado';
-                  if (pestaña === 'pagada') return r.situacion === 'Pagado';
-                  if (pestaña === 'seguimiento') return r.destacado || (a.destacado && r.situacion !== 'Pagado');
-                  return false;
-                });
+            {/* CONTENIDO (Solo se muestra si está desplegada) */}
+            {estaDesplegada && (
+              <div className="divide-y divide-gray-200">
+                {lista.map((a: any) => {
+                  const items: any[] = (a.reclamaciones || []).filter((r: any) => {
+                    if (pestaña === 'activa') return r.situacion !== 'Pagado';
+                    if (pestaña === 'pagada') return r.situacion === 'Pagado';
+                    if (pestaña === 'seguimiento') return r.destacado || (a.destacado && r.situacion !== 'Pagado');
+                    return false;
+                  });
 
-                if ((pestaña === 'pagada' || pestaña === 'seguimiento') && items.length === 0 && !a.destacado) return null;
+                  if ((pestaña === 'pagada' || pestaña === 'seguimiento') && items.length === 0 && !a.destacado) return null;
 
-                return (
-                  <div key={a.id} className={`p-2 ${a.destacado ? 'bg-yellow-50/30' : ''}`}>
-                    <div className={`flex justify-between items-start border px-3 py-2 rounded mb-1.5 ${a.destacado ? 'bg-yellow-100/50 border-yellow-200' : 'bg-slate-50 border-slate-200'}`}>
-                      {editId === a.id ? (
-                        <div className="grid grid-cols-2 gap-1.5 flex-1 mr-3">
-                          <input placeholder="Cliente" value={tempEdit.cliente} onChange={e => setTempEdit({...tempEdit, cliente: e.target.value})} className="border p-1 text-xs rounded font-bold" />
-                          <input placeholder="Bodega" value={tempEdit.bodega} onChange={e => setTempEdit({...tempEdit, bodega: e.target.value})} className="border p-1 text-xs rounded" />
-                          <input placeholder="Producto" value={tempEdit.producto} onChange={e => setTempEdit({...tempEdit, producto: e.target.value})} className="border p-1 text-xs rounded" />
-                          <input placeholder="Tipo" value={tempEdit.tipoAportacion} onChange={e => setTempEdit({...tempEdit, tipoAportacion: e.target.value})} className="border p-1 text-xs rounded" />
-                          <input placeholder="Observaciones..." value={tempEdit.observaciones} onChange={e => setTempEdit({...tempEdit, observaciones: e.target.value})} className="border p-1 text-xs rounded col-span-2" />
-                        </div>
-                      ) : (
-                        <div className="flex-1 flex gap-2 items-start">
-                          <button onClick={() => toggleDestacadoAcuerdo(a.id)} className={`mt-0.5 ${a.destacado ? 'text-yellow-500' : 'text-gray-300 hover:text-yellow-400'}`}><Star size={16} className={a.destacado ? 'fill-yellow-500' : ''} /></button>
-                          <div>
-                            <h3 className="font-bold text-sm text-slate-800">{a.cliente}</h3>
-                            <p className="text-xs text-slate-500 mt-0.5"><span className="font-semibold text-slate-600">Prod:</span> {a.producto} <span className="mx-1">|</span> <span className="font-semibold text-slate-600">Tipo:</span> {a.tipoAportacion}</p>
-                            {a.observaciones && <p className={`text-xs italic mt-1 px-2 py-0.5 rounded border inline-block ${a.destacado ? 'bg-yellow-50 border-yellow-200 text-yellow-800' : 'bg-white border-dashed border-gray-200'}`}>"{a.observaciones}"</p>}
-                          </div>
-                        </div>
-                      )}
-                      
-                      <div className="flex gap-2 ml-2">
+                  return (
+                    <div key={a.id} className={`p-2 ${a.destacado ? 'bg-yellow-50/30' : ''}`}>
+                      <div className={`flex justify-between items-start border px-3 py-2 rounded mb-1.5 ${a.destacado ? 'bg-yellow-100/50 border-yellow-200' : 'bg-slate-50 border-slate-200'}`}>
                         {editId === a.id ? (
-                          <>
-                            <button onClick={guardarEdicion} className="text-green-600 p-0.5 rounded"><Save size={16}/></button>
-                            <button onClick={() => setEditId(null)} className="text-red-500 p-0.5 rounded"><X size={16}/></button>
-                          </>
+                          <div className="grid grid-cols-2 gap-1.5 flex-1 mr-3">
+                            <input placeholder="Cliente" value={tempEdit.cliente} onChange={e => setTempEdit({...tempEdit, cliente: e.target.value})} className="border p-1 text-xs rounded font-bold" />
+                            <input placeholder="Bodega" value={tempEdit.bodega} onChange={e => setTempEdit({...tempEdit, bodega: e.target.value})} className="border p-1 text-xs rounded" />
+                            <input placeholder="Producto" value={tempEdit.producto} onChange={e => setTempEdit({...tempEdit, producto: e.target.value})} className="border p-1 text-xs rounded" />
+                            <input placeholder="Tipo" value={tempEdit.tipoAportacion} onChange={e => setTempEdit({...tempEdit, tipoAportacion: e.target.value})} className="border p-1 text-xs rounded" />
+                            <input placeholder="Observaciones..." value={tempEdit.observaciones} onChange={e => setTempEdit({...tempEdit, observaciones: e.target.value})} className="border p-1 text-xs rounded col-span-2" />
+                          </div>
                         ) : (
-                          <>
-                            <button onClick={() => iniciarEdicion(a)} className="text-slate-400 hover:text-blue-600"><Edit size={14}/></button>
-                            <button onClick={() => borrarAcuerdo(a.id)} className="text-slate-300 hover:text-red-500"><Trash2 size={14}/></button>
-                          </>
+                          <div className="flex-1 flex gap-2 items-start">
+                            <button onClick={() => toggleDestacadoAcuerdo(a.id)} className={`mt-0.5 ${a.destacado ? 'text-yellow-500' : 'text-gray-300 hover:text-yellow-400'}`}><Star size={16} className={a.destacado ? 'fill-yellow-500' : ''} /></button>
+                            <div>
+                              <h3 className="font-bold text-sm text-slate-800">{a.cliente}</h3>
+                              <p className="text-xs text-slate-500 mt-0.5"><span className="font-semibold text-slate-600">Prod:</span> {a.producto} <span className="mx-1">|</span> <span className="font-semibold text-slate-600">Tipo:</span> {a.tipoAportacion}</p>
+                              {a.observaciones && <p className={`text-xs italic mt-1 px-2 py-0.5 rounded border inline-block ${a.destacado ? 'bg-yellow-50 border-yellow-200 text-yellow-800' : 'bg-white border-dashed border-gray-200'}`}>"{a.observaciones}"</p>}
+                            </div>
+                          </div>
+                        )}
+                        
+                        <div className="flex gap-2 ml-2">
+                          {editId === a.id ? (
+                            <>
+                              <button onClick={guardarEdicion} className="text-green-600 p-0.5 rounded"><Save size={16}/></button>
+                              <button onClick={() => setEditId(null)} className="text-red-500 p-0.5 rounded"><X size={16}/></button>
+                            </>
+                          ) : (
+                            <>
+                              <button onClick={() => iniciarEdicion(a)} className="text-slate-400 hover:text-blue-600"><Edit size={14}/></button>
+                              <button onClick={() => borrarAcuerdo(a.id)} className="text-slate-300 hover:text-red-500"><Trash2 size={14}/></button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="ml-2 pl-2 border-l-2 border-slate-100 space-y-1">
+                        {items.map((r: any) => (
+                          <div key={r.id} className={`flex justify-between items-center text-xs py-1 border-b border-dashed border-gray-100 last:border-0 gap-2 ${r.destacado ? 'bg-yellow-50/50 rounded px-1' : ''}`}>
+                            <div className="flex items-center gap-2 flex-1">
+                              <button onClick={() => toggleDestacadoPeriodo(a.id, r.id)} className={r.destacado ? 'text-yellow-500' : 'text-gray-300 hover:text-yellow-400'}><Star size={14} className={r.destacado ? 'fill-yellow-500' : ''} /></button>
+                              <span className="font-medium text-slate-700 w-16 truncate">{r.periodo}</span>
+                              {(r.situacion === 'Reclamado' || r.situacion === 'Pagado') && (
+                                <>
+                                  <span className={`flex items-center gap-1 font-semibold px-1.5 py-0.5 rounded ${r.situacion === 'Pagado' ? 'text-green-600 bg-green-50' : 'text-orange-500 bg-orange-50'}`}><CalendarDays size={12} /> {r.situacion === 'Reclamado' ? r.fechaReclamacion : r.fechaPago}</span>
+                                  <input type="text" placeholder={r.situacion === 'Pagado' ? "Notas del abono..." : "Notas de reclamación..."} value={r.notas || ''} onChange={(e) => guardarNotasPeriodo(a.id, r.id, e.target.value)} className={`flex-1 border p-0.5 px-1.5 rounded focus:outline-none min-w-[100px] ${r.situacion === 'Pagado' ? 'bg-green-50/30 border-green-100' : 'bg-orange-50/30 border-orange-100'}`} />
+                                </>
+                              )}
+                            </div>
+                            <div className="flex gap-2 items-center">
+                              {pestaña === 'activa' || pestaña === 'seguimiento' ? (
+                                <select value={r.situacion} onChange={e => cambiarEstado(a.id, r.id, e.target.value)} className={`border rounded py-0.5 px-1 font-bold ${r.situacion === 'Reclamado' ? 'text-orange-600 border-orange-300 bg-orange-50' : 'text-slate-600'}`}>
+                                  <option value="Pendiente">Pendiente</option><option value="Reclamado">Reclamado</option><option value="Pagado">Marcar Pagado</option>
+                                </select>
+                              ) : <span className="text-green-600 font-bold flex items-center gap-1 bg-green-50 px-1.5 py-0.5 rounded"><CheckCircle size={12}/> Pagado</span>}
+                              <button onClick={() => borrarPeriodo(a.id, r.id)} className="text-gray-300 hover:text-red-500"><Trash2 size={14}/></button>
+                            </div>
+                          </div>
+                        ))}
+                        {pestaña === 'activa' && (
+                          <div className="flex gap-2 mt-1 pt-1 ml-6">
+                            <input placeholder="Añadir (ej. Q1)" value={nuevoPeriodo[a.id] || ''} onChange={e => setNuevoPeriodo({...nuevoPeriodo, [a.id]: e.target.value})} className="text-xs border border-slate-300 py-0.5 px-2 rounded w-36" />
+                            <button onClick={() => agregarQ(a.id)} className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded hover:bg-blue-100">+ Añadir</button>
+                          </div>
                         )}
                       </div>
                     </div>
-
-                    <div className="ml-2 pl-2 border-l-2 border-slate-100 space-y-1">
-                      {items.map((r: any) => (
-                        <div key={r.id} className={`flex justify-between items-center text-xs py-1 border-b border-dashed border-gray-100 last:border-0 gap-2 ${r.destacado ? 'bg-yellow-50/50 rounded px-1' : ''}`}>
-                          <div className="flex items-center gap-2 flex-1">
-                            <button onClick={() => toggleDestacadoPeriodo(a.id, r.id)} className={r.destacado ? 'text-yellow-500' : 'text-gray-300 hover:text-yellow-400'}><Star size={14} className={r.destacado ? 'fill-yellow-500' : ''} /></button>
-                            <span className="font-medium text-slate-700 w-16 truncate">{r.periodo}</span>
-                            {(r.situacion === 'Reclamado' || r.situacion === 'Pagado') && (
-                              <>
-                                <span className={`flex items-center gap-1 font-semibold px-1.5 py-0.5 rounded ${r.situacion === 'Pagado' ? 'text-green-600 bg-green-50' : 'text-orange-500 bg-orange-50'}`}><CalendarDays size={12} /> {r.situacion === 'Reclamado' ? r.fechaReclamacion : r.fechaPago}</span>
-                                <input type="text" placeholder={r.situacion === 'Pagado' ? "Notas del abono..." : "Notas de reclamación..."} value={r.notas || ''} onChange={(e) => guardarNotasPeriodo(a.id, r.id, e.target.value)} className={`flex-1 border p-0.5 px-1.5 rounded focus:outline-none min-w-[100px] ${r.situacion === 'Pagado' ? 'bg-green-50/30 border-green-100' : 'bg-orange-50/30 border-orange-100'}`} />
-                              </>
-                            )}
-                          </div>
-                          <div className="flex gap-2 items-center">
-                            {pestaña === 'activa' || pestaña === 'seguimiento' ? (
-                              <select value={r.situacion} onChange={e => cambiarEstado(a.id, r.id, e.target.value)} className={`border rounded py-0.5 px-1 font-bold ${r.situacion === 'Reclamado' ? 'text-orange-600 border-orange-300 bg-orange-50' : 'text-slate-600'}`}>
-                                <option value="Pendiente">Pendiente</option><option value="Reclamado">Reclamado</option><option value="Pagado">Marcar Pagado</option>
-                              </select>
-                            ) : <span className="text-green-600 font-bold flex items-center gap-1 bg-green-50 px-1.5 py-0.5 rounded"><CheckCircle size={12}/> Pagado</span>}
-                            <button onClick={() => borrarPeriodo(a.id, r.id)} className="text-gray-300 hover:text-red-500"><Trash2 size={14}/></button>
-                          </div>
-                        </div>
-                      ))}
-                      {pestaña === 'activa' && (
-                        <div className="flex gap-2 mt-1 pt-1 ml-6">
-                          <input placeholder="Añadir (ej. Q1)" value={nuevoPeriodo[a.id] || ''} onChange={e => setNuevoPeriodo({...nuevoPeriodo, [a.id]: e.target.value})} className="text-xs border border-slate-300 py-0.5 px-2 rounded w-36" />
-                          <button onClick={() => agregarQ(a.id)} className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded hover:bg-blue-100">+ Añadir</button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         );
       })}
