@@ -184,6 +184,10 @@ export default function Dashboard() {
             <button onClick={exportarBackup} className="flex items-center gap-1 bg-slate-200 text-slate-700 px-3 py-1.5 rounded text-sm font-bold shadow-sm hover:bg-slate-300">
               <Download size={16} /> Backup
             </button>
+            {/* NUEVO BOTÓN */}
+            <a href="/analizador" className="flex items-center gap-1 bg-green-600 text-white px-3 py-1.5 rounded text-sm font-bold shadow-sm hover:bg-green-700">
+              📊 Analizar Promos
+            </a>
             <a href="/nueva-reclamacion" className="inline-block bg-blue-600 text-white px-4 py-1.5 rounded text-sm font-bold shadow hover:bg-blue-700">
               + Nuevo Acuerdo
             </a>
@@ -292,7 +296,7 @@ export default function Dashboard() {
                           <div key={r.id} className={`flex justify-between items-center text-xs py-1 border-b border-dashed border-gray-100 last:border-0 gap-2 ${r.destacado ? 'bg-yellow-50/50 rounded px-1' : ''}`}>
                             <div className="flex items-center gap-2 flex-1">
                               <button onClick={() => toggleDestacadoPeriodo(a.id, r.id)} className={r.destacado ? 'text-yellow-500' : 'text-gray-300 hover:text-yellow-400'}><Star size={14} className={r.destacado ? 'fill-yellow-500' : ''} /></button>
-                              <span className="font-medium text-slate-700 w-16 truncate">{r.periodo}</span>
+                              <span className="font-medium text-slate-700 min-w-[100px]">{r.periodo}</span>
                               {(r.situacion === 'Reclamado' || r.situacion === 'Pagado') && (
                                 <>
                                   <span className={`flex items-center gap-1 font-semibold px-1.5 py-0.5 rounded ${r.situacion === 'Pagado' ? 'text-green-600 bg-green-50' : 'text-orange-500 bg-orange-50'}`}><CalendarDays size={12} /> {r.situacion === 'Reclamado' ? r.fechaReclamacion : r.fechaPago}</span>
