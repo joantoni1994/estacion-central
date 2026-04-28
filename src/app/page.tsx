@@ -12,8 +12,6 @@ export default function Dashboard() {
   const [tempEdit, setTempEdit] = useState<any>({});
   const [nuevoPeriodo, setNuevoPeriodo] = useState<Record<number, string>>({});
   const [hayDatosLocales, setHayDatosLocales] = useState(false);
-  
-  // NUEVO: Memoria para saber qué bodegas están desplegadas
   const [bodegasDesplegadas, setBodegasDesplegadas] = useState<string[]>([]);
 
   useEffect(() => {
@@ -126,13 +124,34 @@ export default function Dashboard() {
     if (acuerdo) actualizarEnNube({ ...acuerdo, reclamaciones: acuerdo.reclamaciones.filter((rec: any) => rec.id !== rId) });
   };
 
-  // NUEVO: Función para abrir o cerrar el desplegable de una bodega
   const toggleBodega = (nombreBodega: string) => {
     if (bodegasDesplegadas.includes(nombreBodega)) {
       setBodegasDesplegadas(bodegasDesplegadas.filter(b => b !== nombreBodega));
     } else {
       setBodegasDesplegadas([...bodegasDesplegadas, nombreBodega]);
     }
+  };
+
+  // --- LÓGICA DE CONTADORES POR BODEGA ---
+  const obtenerEstadisticas = (listaAcuerdos: any[]) => {
+    let sinAbrir = 0;
+    let pendientes = 0;
+    let reclamados = 0;
+    let pagados = 0;
+
+    listaAcuerdos.forEach(a => {
+      if (!a.reclamaciones || a.reclamaciones.length === 0) {
+        sinAbrir++;
+      } else {
+        a.reclamaciones.forEach((r: any) => {
+          if (r.situacion === 'Pendiente') pendientes++;
+          if (r.situacion === 'Reclamado') reclamados++;
+          if (r.situacion === 'Pagado') pagados++;
+        });
+      }
+    });
+
+    return { sinAbrir, pendientes, reclamados, pagados };
   };
 
   const acuerdosFiltrados = acuerdos.filter(a => a.bodega.toLowerCase().includes(filtroBodega.toLowerCase()));
@@ -187,41 +206,38 @@ export default function Dashboard() {
       </div>
 
       {Object.entries(agrupadas).map(([bodega, lista]: [string, any[]]) => {
-        const tieneContenido = lista.some((a: any) => {
-          if (pestaña === 'activa') return true;
-          if (pestaña === 'pagada') return a.reclamaciones.some((r:any) => r.situacion === 'Pagado');
-          if (pestaña === 'seguimiento') return a.destacado || a.reclamaciones.some((r:any) => r.destacado);
-          return false;
-        });
-
-        if (!tieneContenido) return null;
-
-        // LÓGICA DE DESPLEGABLE: Está abierta si el usuario hizo clic, o si está usando el buscador
+        const stats = obtenerEstadisticas(lista);
         const estaDesplegada = bodegasDesplegadas.includes(bodega) || filtroBodega.trim() !== '';
 
         return (
           <div key={bodega} className="mb-4 border border-slate-300 rounded bg-white shadow-sm overflow-hidden">
             
-            {/* CABECERA DE LA BODEGA (Ahora es un botón gigante) */}
             <div 
               onClick={() => toggleBodega(bodega)}
               className="bg-slate-800 text-white px-3 py-2 font-bold text-sm tracking-wide flex justify-between items-center cursor-pointer hover:bg-slate-700 transition-colors"
             >
-              <div className="flex items-center gap-2 select-none">
-                {estaDesplegada ? <ChevronDown size={18} className="text-slate-400" /> : <ChevronRight size={18} className="text-slate-400" />}
-                <span className="uppercase">{bodega}</span>
-                {!estaDesplegada && <span className="ml-2 text-xs font-normal text-slate-400 bg-slate-900 px-2 py-0.5 rounded-full">{lista.length} acuerdos</span>}
+              <div className="flex items-center gap-2 select-none overflow-hidden">
+                {estaDesplegada ? <ChevronDown size={18} className="text-slate-400 shrink-0" /> : <ChevronRight size={18} className="text-slate-400 shrink-0" />}
+                <span className="uppercase truncate max-w-[120px] md:max-w-none">{bodega}</span>
+                
+                {/* CONTADORES RESUMEN */}
+                <div className="hidden sm:flex gap-1.5 ml-4 text-[10px] font-bold uppercase">
+                  <span className="bg-slate-900 text-slate-300 px-2 py-0.5 rounded-full">{lista.length} Acuerdos</span>
+                  {stats.sinAbrir > 0 && <span className="bg-gray-700 text-gray-400 px-2 py-0.5 rounded-full">{stats.sinAbrir} Sin abrir</span>}
+                  {stats.pendientes > 0 && <span className="bg-orange-950 text-orange-400 px-2 py-0.5 rounded-full border border-orange-900">{stats.pendientes} Pendientes</span>}
+                  {stats.reclamados > 0 && <span className="bg-blue-950 text-blue-400 px-2 py-0.5 rounded-full border border-blue-900">{stats.reclamados} Reclamados</span>}
+                  {stats.pagados > 0 && <span className="bg-green-950 text-green-400 px-2 py-0.5 rounded-full border border-green-900">{stats.pagados} Pagados</span>}
+                </div>
               </div>
               <a 
                 href={`/nueva-reclamacion?bodega=${encodeURIComponent(bodega)}`} 
-                onClick={(e) => e.stopPropagation()} // Esto evita que se cierre la bodega al darle al botón
-                className="text-xs bg-blue-600 hover:bg-blue-500 px-2 py-1 rounded cursor-pointer text-white shadow-sm"
+                onClick={(e) => e.stopPropagation()} 
+                className="text-xs bg-blue-600 hover:bg-blue-500 px-2 py-1 rounded cursor-pointer text-white shadow-sm shrink-0"
               >
                 + Acuerdo
               </a>
             </div>
             
-            {/* CONTENIDO (Solo se muestra si está desplegada) */}
             {estaDesplegada && (
               <div className="divide-y divide-gray-200">
                 {lista.map((a: any) => {
