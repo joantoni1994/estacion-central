@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import { LayoutDashboard, FileSpreadsheet, FolderOpen } from 'lucide-react';
+import { LayoutDashboard, FileSpreadsheet, FolderOpen, Calculator } from 'lucide-react';
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -28,6 +28,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <a href="/analizador" className="flex items-center gap-3 p-3 rounded-lg hover:bg-slate-800 hover:text-white transition-colors">
               <FileSpreadsheet size={20} className="shrink-0 text-green-400" />
               <span className="hidden md:inline font-medium text-green-400">Analizador Promos</span>
+            </a>
+            {/* NUEVO BOTÓN AUDITOR */}
+            <a href="/auditor" className="flex items-center gap-3 p-3 rounded-lg hover:bg-slate-800 hover:text-white transition-colors">
+              <Calculator size={20} className="shrink-0 text-red-400" />
+              <span className="hidden md:inline font-medium text-red-400">Auditor Márgenes</span>
             </a>
             <a href="/archivos" className="flex items-center gap-3 p-3 rounded-lg hover:bg-slate-800 hover:text-white transition-colors">
               <FolderOpen size={20} className="shrink-0" />
