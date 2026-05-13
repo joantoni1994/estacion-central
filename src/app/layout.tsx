@@ -5,16 +5,12 @@ import { LayoutDashboard, FileSpreadsheet, FolderOpen, Calculator } from 'lucide
 
 const inter = Inter({ subsets: ["latin"] });
 
-export const metadata: Metadata = {
-  title: "Estación Central",
-};
+export const metadata: Metadata = { title: "Estación Central" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="es">
       <body className={`${inter.className} flex h-screen bg-gray-50 overflow-hidden`}>
-        
-        {/* MENÚ LATERAL IZQUIERDO */}
         <aside className="w-16 md:w-64 bg-slate-900 text-slate-300 flex flex-col transition-all shrink-0">
           <div className="h-16 flex items-center justify-center md:justify-start md:px-6 font-black text-white border-b border-slate-800 tracking-wider">
             <span className="md:hidden">EC</span>
@@ -29,7 +25,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <FileSpreadsheet size={20} className="shrink-0 text-green-400" />
               <span className="hidden md:inline font-medium text-green-400">Analizador Promos</span>
             </a>
-            {/* NUEVO BOTÓN AUDITOR */}
             <a href="/auditor" className="flex items-center gap-3 p-3 rounded-lg hover:bg-slate-800 hover:text-white transition-colors">
               <Calculator size={20} className="shrink-0 text-red-400" />
               <span className="hidden md:inline font-medium text-red-400">Auditor Márgenes</span>
@@ -40,12 +35,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </a>
           </nav>
         </aside>
-
-        {/* CONTENIDO PRINCIPAL */}
-        <main className="flex-1 overflow-y-auto">
-          {children}
-        </main>
-
+        <main className="flex-1 overflow-y-auto">{children}</main>
       </body>
     </html>
   );
