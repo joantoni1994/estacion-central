@@ -3,6 +3,7 @@ import { useState } from 'react';
 import * as XLSX from 'xlsx';
 import { UploadCloud, Loader2, AlertTriangle, Calculator, Settings2, FileSpreadsheet, Play, Trash2 } from 'lucide-react';
 
+
 export default function AuditorMargenes() {
   const [procesando, setProcesando] = useState(false);
   const [mensaje, setMensaje] = useState<{ texto: string; tipo: 'exito' | 'error' | 'info' } | null>(null);

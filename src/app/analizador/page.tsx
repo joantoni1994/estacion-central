@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
-import { UploadCloud, FileDown, Loader2, Wine, BarChart3, Link as LinkIcon, Save, Download, FileText } from 'lucide-react';
+import { UploadCloud, FileDown, Loader2, Wine, BarChart3, Link as LinkIcon, Save, Download, FileText, Users } from 'lucide-react';
 import { collection, onSnapshot, addDoc } from 'firebase/firestore';
 import { db } from '../../firebase'; 
 import jsPDF from 'jspdf';
@@ -11,9 +11,11 @@ export default function AnalizadorPromos() {
   const [procesando, setProcesando] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [mensaje, setMensaje] = useState<{ texto: string; tipo: 'exito' | 'error' | 'info' } | null>(null);
-  const [resumenProductos, setResumenProductos] = useState<{ descripcion: string; cantidad: number }[]>([]);
+  
+  const [resumenProductos, setResumenProductos] = useState<{ descripcion: string; cantidad: number; clientes: {nombre: string, cantidad: number}[] }[]>([]);
   const [totalBotellas, setTotalBotellas] = useState(0);
   const [datosExtraidos, setDatosExtraidos] = useState<any[]>([]); 
+  
   const [acuerdos, setAcuerdos] = useState<any[]>([]);
   const [bodegaSel, setBodegaSel] = useState('');
   const [acuerdoSel, setAcuerdoSel] = useState('');
@@ -36,8 +38,10 @@ export default function AnalizadorPromos() {
     if (!file) return;
 
     setProcesando(true);
-    setMensaje({ texto: 'Analizando documento y emparejando líneas...', tipo: 'info' });
-    setResumenProductos([]); setTotalBotellas(0); setDatosExtraidos([]); 
+    setMensaje({ texto: 'Analizando documento y cuadrando abonos...', tipo: 'info' });
+    setResumenProductos([]);
+    setTotalBotellas(0);
+    setDatosExtraidos([]); 
 
     const reader = new FileReader();
     reader.onload = (evento) => {
@@ -52,37 +56,43 @@ export default function AnalizadorPromos() {
           filasBrutas = filasBrutas.map(fila => String(fila[0] || '').split(';'));
         }
 
-        let filaCabeceras = -1, colDocum = -1, colCodigo = -1, colDto = -1, colCant = -1, colDesc = -1, colCliente = -1, colFecha = -1;
+        let filaCabeceras = -1, colDocum = -1, colCodigo = -1, colDto = -1, colCant = -1, colDesc = -1, colCliente = -1, colFecha = -1, colNomCli = -1;
 
         for (let i = 0; i < filasBrutas.length; i++) {
           const fila = filasBrutas[i];
           if (!Array.isArray(fila)) continue;
-          let tempDoc = -1, tempCod = -1, tempDto = -1, tempCant = -1, tempDesc = -1, tempCli = -1, tempFecha = -1;
+          let tempDoc = -1, tempCod = -1, tempDto = -1, tempCant = -1, tempDesc = -1, tempCli = -1, tempFecha = -1, tempNomCli = -1;
           
           fila.forEach((celda, index) => {
             const t = String(celda).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, ''); 
             if (t.includes('docum') || t.includes('factura') || t.includes('albaran')) tempDoc = index;
-            if (t.includes('codigo') || t.includes('cod') || t.includes('articulo')) tempCod = index;
+            if (t === 'codigo' || t === 'cod' || t.includes('articulo')) tempCod = index;
             if (t.includes('dto') || t.includes('descuento')) tempDto = index;
             if (t === 'cant' || t.includes('cantidad') || t.includes('uds')) tempCant = index;
-            if (t.includes('descrip') || t.includes('nombre')) tempDesc = index;
-            if (t.includes('cliente') || t.includes('nom')) tempCli = index;
+            if (t.includes('descrip') || t.includes('producto')) tempDesc = index;
+            if (t === 'cliente' || t.includes('codcli')) tempCli = index;
+            if (t === 'nombre' || t.includes('razonsocial') || t.includes('nomcli')) tempNomCli = index;
             if (t.includes('fecha')) tempFecha = index;
           });
 
           if (tempDoc !== -1 && tempCod !== -1 && tempDto !== -1) {
-            filaCabeceras = i; colDocum = tempDoc; colCodigo = tempCod; colDto = tempDto; colCant = tempCant; colDesc = tempDesc; colCliente = tempCli; colFecha = tempFecha; break;
+            filaCabeceras = i; 
+            colDocum = tempDoc; colCodigo = tempCod; colDto = tempDto; 
+            colCant = tempCant; colDesc = tempDesc; colCliente = tempCli; 
+            colFecha = tempFecha; colNomCli = tempNomCli; 
+            break;
           }
         }
 
         const identificadores = new Set<string>();
-        const mapaResumen: Record<string, number> = {};
+        const mapaResumen: Record<string, { total: number, clientes: Record<string, number> }> = {};
         let sumaBotellas = 0;
 
         for (let i = filaCabeceras + 1; i < filasBrutas.length; i++) {
           const fila = filasBrutas[i];
           if (!fila) continue;
           const valNum = parseFloat(String(fila[colDto] || '').replace(/%/g, '').replace(/\s/g, '').replace(/-/g, '').replace(/,/g, '.'));
+          
           if (valNum === 100 || valNum === 1) {
             const docum = String(fila[colDocum] || '').trim();
             const codigo = String(fila[colCodigo] || '').trim();
@@ -91,9 +101,19 @@ export default function AnalizadorPromos() {
 
             if (docum && codigo) {
               identificadores.add(`${cliente}_${fecha}_${docum}_${codigo}`);
-              const cant = Math.abs(parseFloat(String(fila[colCant] || '').replace(/,/g, '.')) || 0);
+              
+              // ¡AQUÍ ESTABA EL FALLO! Quitamos el Math.abs para permitir cantidades negativas (abonos)
+              const cant = parseFloat(String(fila[colCant] || '').replace(/,/g, '.')) || 0;
               const desc = String(fila[colDesc] || '').trim() || 'Sin descripción';
-              if (cant > 0) { mapaResumen[desc] = (mapaResumen[desc] || 0) + cant; sumaBotellas += cant; }
+              const nombreClienteParaHover = colNomCli !== -1 ? String(fila[colNomCli] || '').trim() : (cliente || 'Desconocido');
+
+              // Si es distinto de 0 (permite restar si es negativo)
+              if (cant !== 0) { 
+                if (!mapaResumen[desc]) mapaResumen[desc] = { total: 0, clientes: {} };
+                mapaResumen[desc].total += cant;
+                mapaResumen[desc].clientes[nombreClienteParaHover] = (mapaResumen[desc].clientes[nombreClienteParaHover] || 0) + cant;
+                sumaBotellas += cant; 
+              }
             }
           }
         }
@@ -102,6 +122,7 @@ export default function AnalizadorPromos() {
         for (let i = filaCabeceras + 1; i < filasBrutas.length; i++) {
           const fila = filasBrutas[i];
           if (!fila) continue;
+          
           const docum = String(fila[colDocum] || '').trim();
           const codigo = String(fila[colCodigo] || '').trim();
           const cliente = colCliente !== -1 ? String(fila[colCliente] || '').trim() : '';
@@ -119,9 +140,23 @@ export default function AnalizadorPromos() {
         }
 
         setDatosExtraidos(filasFiltradas);
-        setResumenProductos(Object.entries(mapaResumen).map(([desc, cant]) => ({ descripcion: desc, cantidad: cant })).sort((a, b) => b.cantidad - a.cantidad));
+
+        // Transformamos el mapa limpiando los productos o clientes que se hayan quedado en 0 o negativo
+        const productosLimpios = Object.entries(mapaResumen)
+          .filter(([desc, data]) => data.total > 0) // Ocultar si el total global del producto es 0
+          .map(([desc, data]) => ({ 
+            descripcion: desc, 
+            cantidad: data.total,
+            clientes: Object.entries(data.clientes)
+              .filter(([nombre, cantidad]) => cantidad > 0) // Ocultar clientes que hayan devuelto todo
+              .map(([nombre, cantidad]) => ({ nombre, cantidad }))
+              .sort((a,b) => b.cantidad - a.cantidad)
+          }))
+          .sort((a, b) => b.cantidad - a.cantidad);
+
+        setResumenProductos(productosLimpios);
         setTotalBotellas(sumaBotellas);
-        setMensaje({ texto: `¡Extracción completada!`, tipo: 'exito' });
+        setMensaje({ texto: `¡Cantidades ajustadas y abonos descontados!`, tipo: 'exito' });
         setProcesando(false);
       } catch (error) {
         setMensaje({ texto: 'Error al leer el archivo.', tipo: 'error' });
@@ -141,6 +176,7 @@ export default function AnalizadorPromos() {
   const descargarPDF = () => {
     const doc = new jsPDF();
     const fecha = new Date().toLocaleDateString('es-ES');
+
     doc.setFontSize(20); doc.setTextColor(30, 41, 59); doc.text('RESUMEN DE RECLAMACIÓN', 14, 22);
     doc.setFontSize(10); doc.setTextColor(100); doc.text(`Fecha de generación: ${fecha}`, 14, 30); doc.text(`Bodega: ${bodegaSel || 'Pendiente de vincular'}`, 14, 35);
     doc.setFillColor(241, 245, 249); doc.roundedRect(14, 45, 180, 25, 3, 3, 'F');
@@ -153,6 +189,7 @@ export default function AnalizadorPromos() {
       headStyles: { fillColor: [30, 41, 59], fontStyle: 'bold' }, alternateRowStyles: { fillColor: [248, 250, 252] },
       styles: { fontSize: 10, cellPadding: 4 }, columnStyles: { 1: { halign: 'right', fontStyle: 'bold' } }
     });
+
     doc.save(`Resumen_Reclamacion_${bodegaSel || 'Promos'}.pdf`);
   };
 
@@ -161,7 +198,10 @@ export default function AnalizadorPromos() {
     setGuardando(true);
     try {
       const nombrePeriodo = reclamacionesDisponibles.find((r:any) => r.id.toString() === reclamacionSel)?.periodo || 'Desconocido';
-      await addDoc(collection(db, 'archivos_promos'), { fechaSubida: new Date().toISOString(), bodega: bodegaSel, acuerdoId: acuerdoSel, reclamacionId: reclamacionSel, nombrePeriodo, totalBotellas, resumen: resumenProductos, datosExcel: JSON.stringify(datosExtraidos) });
+      await addDoc(collection(db, 'archivos_promos'), {
+        fechaSubida: new Date().toISOString(), bodega: bodegaSel, acuerdoId: acuerdoSel, reclamacionId: reclamacionSel,
+        nombrePeriodo, totalBotellas, resumen: resumenProductos.map(p => ({ descripcion: p.descripcion, cantidad: p.cantidad })), datosExcel: JSON.stringify(datosExtraidos)
+      });
       setMensaje({ texto: '✅ Vinculado con éxito.', tipo: 'exito' });
     } catch (error) { setMensaje({ texto: 'Error al guardar.', tipo: 'error' }); }
     setGuardando(false);
@@ -169,7 +209,7 @@ export default function AnalizadorPromos() {
 
   return (
     <div className="p-4 md:p-8 max-w-5xl mx-auto">
-      <div className="mb-8 border-b pb-4"><h1 className="text-3xl font-bold text-slate-800">Analizador de Promociones</h1><p className="text-slate-500 mt-1">Extrae y genera informes al instante.</p></div>
+      <div className="mb-8 border-b pb-4"><h1 className="text-3xl font-bold text-slate-800">Analizador de Promociones</h1><p className="text-slate-500 mt-1">Extrae y genera informes de reclamación al instante.</p></div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <div className="bg-white p-8 rounded-xl border-2 border-dashed border-blue-200 text-center flex flex-col justify-center min-h-[300px]">
           {procesando ? <Loader2 size={40} className="animate-spin mx-auto text-blue-600" /> : (
@@ -188,7 +228,7 @@ export default function AnalizadorPromos() {
             {resumenProductos.length > 0 && (
               <div className="flex gap-2">
                 <button onClick={descargarExcel} className="flex items-center gap-1 bg-white text-green-700 px-2 py-1 rounded shadow-sm text-[10px] font-bold hover:bg-green-100"><Download size={12}/> Excel</button>
-                <button onClick={descargarPDF} className="flex items-center gap-1 bg-blue-600 text-white px-2 py-1 rounded shadow-sm text-[10px] font-bold hover:bg-blue-700"><FileText size={12}/> PDF</button>
+                <button onClick={descargarPDF} className="flex items-center gap-1 bg-blue-600 text-white px-2 py-1 rounded shadow-sm text-[10px] font-bold hover:bg-blue-700"><FileText size={12}/> PDF Resumen</button>
               </div>
             )}
           </div>
@@ -196,8 +236,32 @@ export default function AnalizadorPromos() {
             {resumenProductos.length > 0 && (
               <>
                 <div className="flex items-center gap-4 mb-4 bg-slate-800 text-white p-4 rounded-lg shadow-md"><Wine size={28} className="text-green-400" /><div><p className="text-xs font-medium text-slate-400">Total reclamable</p><p className="text-3xl font-black">{totalBotellas} bot.</p></div></div>
-                <div className="overflow-y-auto max-h-[150px] space-y-1">
-                  {resumenProductos.map((item, i) => (<div key={i} className="flex justify-between text-xs p-2 bg-slate-50 border rounded"><span className="truncate pr-2 font-medium">{item.descripcion}</span><span className="font-bold text-blue-700">{item.cantidad}</span></div>))}
+                
+                <div className="overflow-y-auto max-h-[250px] space-y-2 custom-scrollbar pr-1 pb-4">
+                  {resumenProductos.map((item, i) => (
+                    <div key={i} className="group text-xs bg-slate-50 border border-slate-200 rounded cursor-help transition-all hover:border-blue-300 hover:shadow-md">
+                      
+                      <div className="flex justify-between p-2 group-hover:bg-blue-50/50 rounded-t">
+                        <span className="truncate pr-2 font-medium">{item.descripcion}</span>
+                        <span className="font-bold text-blue-700">{item.cantidad}</span>
+                      </div>
+                      
+                      <div className="hidden group-hover:block border-t border-blue-100 bg-white rounded-b p-2 animate-fade-in">
+                        <div className="flex items-center gap-1 text-[10px] font-bold text-slate-400 uppercase mb-1.5 pb-1 border-b border-slate-100">
+                          <Users size={12} /> Desglose de clientes
+                        </div>
+                        <div className="space-y-1">
+                          {item.clientes.map((c, idx) => (
+                            <div key={idx} className="flex justify-between text-slate-600 hover:bg-slate-100 px-1 py-0.5 rounded transition-colors">
+                              <span className="truncate pr-2 text-[11px]">- {c.nombre}</span>
+                              <span className="font-semibold text-[11px]">{c.cantidad}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                    </div>
+                  ))}
                 </div>
               </>
             )}

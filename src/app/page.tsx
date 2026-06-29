@@ -1,16 +1,16 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { Trash2, Edit, Save, X, CheckCircle, CalendarDays, Search, Star, Download, CloudUpload, ChevronRight, ChevronDown } from 'lucide-react';
-import { collection, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, deleteDoc, updateDoc, setDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase'; 
 
 export default function Dashboard() {
   const [acuerdos, setAcuerdos] = useState<any[]>([]);
   const [pestaña, setPestaña] = useState('activa');
   const [filtroBodega, setFiltroBodega] = useState('');
-  const [editId, setEditId] = useState<number | null>(null);
+  const [editId, setEditId] = useState<any>(null);
   const [tempEdit, setTempEdit] = useState<any>({});
-  const [nuevoPeriodo, setNuevoPeriodo] = useState<Record<number, string>>({});
+  const [nuevoPeriodo, setNuevoPeriodo] = useState<Record<string, string>>({});
   const [hayDatosLocales, setHayDatosLocales] = useState(false);
   const [bodegasDesplegadas, setBodegasDesplegadas] = useState<string[]>([]);
 
@@ -36,7 +36,8 @@ export default function Dashboard() {
     try {
       const locales = JSON.parse(localStorage.getItem('acuerdosMock') || '[]');
       for (const ac of locales) {
-        await setDoc(doc(db, 'acuerdos', ac.id.toString()), ac);
+        const limpio = JSON.parse(JSON.stringify(ac));
+        await setDoc(doc(db, 'acuerdos', limpio.id.toString()), limpio);
       }
       alert('¡Datos subidos a Firebase con éxito! ☁️');
       localStorage.removeItem('acuerdosMock');
@@ -49,9 +50,10 @@ export default function Dashboard() {
 
   const actualizarEnNube = async (acuerdoModificado: any) => {
     try {
-      await setDoc(doc(db, 'acuerdos', acuerdoModificado.id.toString()), acuerdoModificado);
+      const limpio = JSON.parse(JSON.stringify(acuerdoModificado));
+      await setDoc(doc(db, 'acuerdos', limpio.id.toString()), limpio);
     } catch(e) {
-      console.error(e);
+      console.error("Error al actualizar:", e);
     }
   };
 
@@ -76,52 +78,60 @@ export default function Dashboard() {
     setEditId(null);
   };
 
-  const agregarQ = (id: number) => {
+  const agregarQ = (id: any) => {
     if (!nuevoPeriodo[id]) return;
-    const acuerdo = acuerdos.find(a => a.id === id);
+    const acuerdo = acuerdos.find(a => a.id.toString() === id.toString());
     if (!acuerdo) return;
     const nuevoAc = { ...acuerdo, reclamaciones: [...(acuerdo.reclamaciones || []), {id: Date.now(), periodo: nuevoPeriodo[id], situacion: 'Pendiente', notas: '', destacado: false}] };
     actualizarEnNube(nuevoAc);
     setNuevoPeriodo({...nuevoPeriodo, [id]: ''});
   };
 
-  const cambiarEstado = (aId: number, rId: number, estado: string) => {
-    const acuerdo = acuerdos.find(a => a.id === aId);
+  const cambiarEstado = (aId: any, rId: any, estado: string) => {
+    const acuerdo = acuerdos.find(a => a.id.toString() === aId.toString());
     if (!acuerdo) return;
     const fechaHoy = new Date().toLocaleDateString('es-ES');
+    
     const nuevoAc = { ...acuerdo, reclamaciones: acuerdo.reclamaciones.map((r: any) => {
-        if (r.id === rId) return { ...r, situacion: estado, fechaReclamacion: estado === 'Reclamado' ? (r.fechaReclamacion || fechaHoy) : r.fechaReclamacion, fechaPago: estado === 'Pagado' ? (r.fechaPago || fechaHoy) : r.fechaPago };
+        if (r.id.toString() === rId.toString()) {
+          return { 
+            ...r, 
+            situacion: estado, 
+            fechaReclamacion: estado === 'Reclamado' ? (r.fechaReclamacion || fechaHoy) : (r.fechaReclamacion || ""), 
+            fechaPago: estado === 'Pagado' ? (r.fechaPago || fechaHoy) : (r.fechaPago || "") 
+          };
+        }
         return r;
       })
     };
     actualizarEnNube(nuevoAc);
   };
 
-  const guardarNotasPeriodo = (aId: number, rId: number, notas: string) => {
-    const acuerdo = acuerdos.find(a => a.id === aId);
+  const guardarNotasPeriodo = (aId: any, rId: any, notas: string) => {
+    const acuerdo = acuerdos.find(a => a.id.toString() === aId.toString());
     if (!acuerdo) return;
-    actualizarEnNube({ ...acuerdo, reclamaciones: acuerdo.reclamaciones.map((r: any) => r.id === rId ? { ...r, notas } : r) });
+    actualizarEnNube({ ...acuerdo, reclamaciones: acuerdo.reclamaciones.map((r: any) => r.id.toString() === rId.toString() ? { ...r, notas } : r) });
   };
 
-  const toggleDestacadoAcuerdo = (aId: number) => {
-    const acuerdo = acuerdos.find(a => a.id === aId);
+  const toggleDestacadoAcuerdo = (aId: any) => {
+    const acuerdo = acuerdos.find(a => a.id.toString() === aId.toString());
     if (acuerdo) actualizarEnNube({ ...acuerdo, destacado: !acuerdo.destacado });
   };
 
-  const toggleDestacadoPeriodo = (aId: number, rId: number) => {
-    const acuerdo = acuerdos.find(a => a.id === aId);
-    if (acuerdo) actualizarEnNube({ ...acuerdo, reclamaciones: acuerdo.reclamaciones.map((r: any) => r.id === rId ? { ...r, destacado: !r.destacado } : r) });
+  const toggleDestacadoPeriodo = (aId: any, rId: any) => {
+    const acuerdo = acuerdos.find(a => a.id.toString() === aId.toString());
+    if (acuerdo) actualizarEnNube({ ...acuerdo, reclamaciones: acuerdo.reclamaciones.map((r: any) => r.id.toString() === rId.toString() ? { ...r, destacado: !r.destacado } : r) });
   };
 
-  const borrarAcuerdo = async (id: number) => {
+  const borrarAcuerdo = async (id: any) => {
     if(confirm("¿Borrar este acuerdo para siempre en la nube?")) {
       await deleteDoc(doc(db, 'acuerdos', id.toString()));
     }
   };
 
-  const borrarPeriodo = (aId: number, rId: number) => {
-    const acuerdo = acuerdos.find(a => a.id === aId);
-    if (acuerdo) actualizarEnNube({ ...acuerdo, reclamaciones: acuerdo.reclamaciones.filter((rec: any) => rec.id !== rId) });
+  const borrarPeriodo = (aId: any, rId: any) => {
+    const acuerdo = acuerdos.find(a => a.id.toString() === aId.toString());
+    if (acuerdo) actualizarEnNube({ ...acuerdo, reclamaciones: acuerdo.reclamaciones.filter((rec: any) => rec.id.toString() !== rId.toString()) });
   };
 
   const toggleBodega = (nombreBodega: string) => {
@@ -132,12 +142,15 @@ export default function Dashboard() {
     }
   };
 
-  // --- LÓGICA DE CONTADORES POR BODEGA ---
+  // --- LÓGICA DE CONTADORES ACTUALIZADA ---
   const obtenerEstadisticas = (listaAcuerdos: any[]) => {
     let sinAbrir = 0;
     let pendientes = 0;
     let reclamados = 0;
     let pagados = 0;
+    
+    // Usamos Set para guardar los periodos sin que se repitan
+    const periodosReclamados = new Set<string>();
 
     listaAcuerdos.forEach(a => {
       if (!a.reclamaciones || a.reclamaciones.length === 0) {
@@ -145,17 +158,43 @@ export default function Dashboard() {
       } else {
         a.reclamaciones.forEach((r: any) => {
           if (r.situacion === 'Pendiente') pendientes++;
-          if (r.situacion === 'Reclamado') reclamados++;
+          if (r.situacion === 'Reclamado') {
+            reclamados++;
+            if (r.periodo) periodosReclamados.add(r.periodo.trim());
+          }
           if (r.situacion === 'Pagado') pagados++;
         });
       }
     });
 
-    return { sinAbrir, pendientes, reclamados, pagados };
+    return { 
+      sinAbrir, 
+      pendientes, 
+      reclamados, 
+      pagados,
+      textPeriodosReclamados: Array.from(periodosReclamados).join(', ') // Convertimos la lista a texto (ej: "Q1, Q2")
+    };
+  };
+
+  const esValidoParaPestaña = (a: any, pest: string) => {
+    const recs = a.reclamaciones || [];
+    if (pest === 'activa') {
+      if (recs.length === 0) return true; 
+      return recs.some((r: any) => r.situacion !== 'Pagado');
+    }
+    if (pest === 'pagada') {
+      return recs.some((r: any) => r.situacion === 'Pagado');
+    }
+    if (pest === 'seguimiento') {
+      return a.destacado || recs.some((r: any) => r.destacado);
+    }
+    return true;
   };
 
   const acuerdosFiltrados = acuerdos.filter(a => a.bodega.toLowerCase().includes(filtroBodega.toLowerCase()));
-  const agrupadas = acuerdosFiltrados.reduce((acc: Record<string, any[]>, obj: any) => {
+  const acuerdosParaEstaPestaña = acuerdosFiltrados.filter(a => esValidoParaPestaña(a, pestaña));
+
+  const agrupadas = acuerdosParaEstaPestaña.reduce((acc: Record<string, any[]>, obj: any) => {
     const key = obj.bodega.trim().toUpperCase();
     if (!acc[key]) acc[key] = [];
     acc[key].push(obj);
@@ -184,7 +223,6 @@ export default function Dashboard() {
             <button onClick={exportarBackup} className="flex items-center gap-1 bg-slate-200 text-slate-700 px-3 py-1.5 rounded text-sm font-bold shadow-sm hover:bg-slate-300">
               <Download size={16} /> Backup
             </button>
-            {/* NUEVO BOTÓN */}
             <a href="/analizador" className="flex items-center gap-1 bg-green-600 text-white px-3 py-1.5 rounded text-sm font-bold shadow-sm hover:bg-green-700">
               📊 Analizar Promos
             </a>
@@ -224,12 +262,18 @@ export default function Dashboard() {
                 {estaDesplegada ? <ChevronDown size={18} className="text-slate-400 shrink-0" /> : <ChevronRight size={18} className="text-slate-400 shrink-0" />}
                 <span className="uppercase truncate max-w-[120px] md:max-w-none">{bodega}</span>
                 
-                {/* CONTADORES RESUMEN */}
                 <div className="hidden sm:flex gap-1.5 ml-4 text-[10px] font-bold uppercase">
                   <span className="bg-slate-900 text-slate-300 px-2 py-0.5 rounded-full">{lista.length} Acuerdos</span>
                   {stats.sinAbrir > 0 && <span className="bg-gray-700 text-gray-400 px-2 py-0.5 rounded-full">{stats.sinAbrir} Sin abrir</span>}
                   {stats.pendientes > 0 && <span className="bg-orange-950 text-orange-400 px-2 py-0.5 rounded-full border border-orange-900">{stats.pendientes} Pendientes</span>}
-                  {stats.reclamados > 0 && <span className="bg-blue-950 text-blue-400 px-2 py-0.5 rounded-full border border-blue-900">{stats.reclamados} Reclamados</span>}
+                  
+                  {/* AQUÍ ESTÁ LA MAGIA DEL PERIODO EN EL CHIP AZUL */}
+                  {stats.reclamados > 0 && (
+                    <span className="bg-blue-950 text-blue-400 px-2 py-0.5 rounded-full border border-blue-900">
+                      {stats.reclamados} Reclamados {stats.textPeriodosReclamados ? `(${stats.textPeriodosReclamados})` : ''}
+                    </span>
+                  )}
+                  
                   {stats.pagados > 0 && <span className="bg-green-950 text-green-400 px-2 py-0.5 rounded-full border border-green-900">{stats.pagados} Pagados</span>}
                 </div>
               </div>
@@ -305,11 +349,20 @@ export default function Dashboard() {
                               )}
                             </div>
                             <div className="flex gap-2 items-center">
-                              {pestaña === 'activa' || pestaña === 'seguimiento' ? (
-                                <select value={r.situacion} onChange={e => cambiarEstado(a.id, r.id, e.target.value)} className={`border rounded py-0.5 px-1 font-bold ${r.situacion === 'Reclamado' ? 'text-orange-600 border-orange-300 bg-orange-50' : 'text-slate-600'}`}>
-                                  <option value="Pendiente">Pendiente</option><option value="Reclamado">Reclamado</option><option value="Pagado">Marcar Pagado</option>
-                                </select>
-                              ) : <span className="text-green-600 font-bold flex items-center gap-1 bg-green-50 px-1.5 py-0.5 rounded"><CheckCircle size={12}/> Pagado</span>}
+                              
+                              <select 
+                                value={r.situacion} 
+                                onChange={e => cambiarEstado(a.id, r.id, e.target.value)} 
+                                className={`border rounded py-0.5 px-1 font-bold outline-none cursor-pointer 
+                                  ${r.situacion === 'Pagado' ? 'text-green-700 border-green-300 bg-green-50' : 
+                                    r.situacion === 'Reclamado' ? 'text-orange-600 border-orange-300 bg-orange-50' : 
+                                    'text-slate-600 border-slate-300'}`}
+                              >
+                                <option value="Pendiente">Pendiente</option>
+                                <option value="Reclamado">Reclamado</option>
+                                <option value="Pagado">Pagado</option>
+                              </select>
+                              
                               <button onClick={() => borrarPeriodo(a.id, r.id)} className="text-gray-300 hover:text-red-500"><Trash2 size={14}/></button>
                             </div>
                           </div>
